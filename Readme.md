@@ -86,14 +86,6 @@ My2DGame/
 │   │           └── enemy.wav
 ```
 
----
-
-## 📸 Zrzuty ekranu
-
-> *(Dodaj zrzuty ekranu tutaj, np. gameplay, ekran końcowy)*
-
----
-
 ## 📄 Licencja
 
 Projekt edukacyjny — do swobodnego użytku i modyfikacji. Nie zawiera zewnętrznych zależności.
@@ -102,4 +94,4 @@ Projekt edukacyjny — do swobodnego użytku i modyfikacji. Nie zawiera zewnętr
 
 ## ✍️ Autor
 
-Projekt stworzony przez [Twoje Imię / GitHub].
+Projekt stworzony przez Tomasz Kapusta.

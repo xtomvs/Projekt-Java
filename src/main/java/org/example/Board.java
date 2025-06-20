@@ -17,29 +17,33 @@ public class Board extends JPanel implements ActionListener, KeyListener {
     public static final int TILE_SIZE = 50;
     public static final int ROWS = 10;
     public static final int COLUMNS = 20;
-    public static final int NUM_COINS = 5;
+    public static final int NUM_COINS = 8;
     public static final int POINTS_PER_COIN = 250;
     private static final long serialVersionUID = 490905409104883233L;
-    private static final int MAX_TIME_SECONDS = 60;
+    public static final int HUD_HEIGHT = 50;
+
 
     private Timer timer;
+    private Enemy enemy;
     private Player player;
     private ArrayList<Coin> coins;
     private int gameTicks = 0;
     private BufferedImage backgroundImage;
-    private BufferedImage winImage;
-    private BufferedImage loseImage;
     private boolean gameOver = false;
-    private static final int WINNING_SCORE = 10000;
     private double remainingTime = 30.0;
-    private int ticksSinceLastCheck = 0;
     private static final double TIME_PER_TICK = 0.025;
     private int highScore = 0;
     private final File highScoreFile = new File("highscore.txt");
+    private ArrayList<Obstacle> obstacles;
+    private static final int NUM_OBSTACLES = 10;
+    private ArrayList<Trap> traps;
+    private static final int NUM_TRAPS = 3;
+
 
 
     public Board() {
-        setPreferredSize(new Dimension(TILE_SIZE * COLUMNS, TILE_SIZE * ROWS));
+        setPreferredSize(new Dimension(TILE_SIZE * COLUMNS, TILE_SIZE * ROWS + 50));
+
         setBackground(new Color(200, 220, 255));
 
         try {
@@ -48,8 +52,19 @@ public class Board extends JPanel implements ActionListener, KeyListener {
             System.out.println("Error loading background: " + e.getMessage());
         }
 
-        player = new Player();
+        SoundPlayer.loopSound("/sounds/music.wav");
+        coins = new ArrayList<>();
+        obstacles = new ArrayList<>();
+        traps = new ArrayList<>();
+
+        player = new Player(this);
         coins = populateCoins();
+
+        obstacles = populateObstacles();
+
+        traps = populateTraps();
+
+        enemy = new Enemy(COLUMNS / 2, ROWS / 2);
 
         loadHighScore();
 
@@ -67,9 +82,17 @@ public class Board extends JPanel implements ActionListener, KeyListener {
             coin.tick();
         }
 
+        for (Trap trap : traps) {
+            trap.tick();
+        }
+
         collectCoins();
         removeExpiredCoins();
         maybeSpawnRandomCoin();
+        maybeSpawnRandomTrap();
+        checkTraps();
+        enemy.moveRandomly();
+        checkEnemyCollision();
 
         remainingTime -= TIME_PER_TICK;
         if (remainingTime <= 0) {
@@ -83,7 +106,7 @@ public class Board extends JPanel implements ActionListener, KeyListener {
             highScore = currentScore;
             saveHighScore();
         }
-
+        removeExpiredTraps();
         repaint();
     }
 
@@ -102,6 +125,16 @@ public class Board extends JPanel implements ActionListener, KeyListener {
         for (Coin coin : coins) {
             coin.draw(g, this);
         }
+
+        for (Obstacle o : obstacles) {
+            o.draw(g, this);
+        }
+
+        for (Trap trap : traps) {
+            trap.draw(g, this);
+        }
+
+        enemy.draw(g, this);
         player.draw(g, this);
 
         Toolkit.getDefaultToolkit().sync();
@@ -135,7 +168,7 @@ public class Board extends JPanel implements ActionListener, KeyListener {
         if (backgroundImage != null) {
             for (int y = 0; y < getHeight(); y += backgroundImage.getHeight()) {
                 for (int x = 0; x < getWidth(); x += backgroundImage.getWidth()) {
-                    g.drawImage(backgroundImage, x, y, this);
+                    g.drawImage(backgroundImage, x, y + 50, this);
                 }
             }
         }
@@ -144,20 +177,22 @@ public class Board extends JPanel implements ActionListener, KeyListener {
 
     private void drawHUD(Graphics g) {
         Graphics2D g2d = (Graphics2D) g;
-        g2d.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
 
-        g2d.setColor(new Color(30, 201, 139));
-        g2d.setFont(new Font("Lato", Font.BOLD, 25));
+        g2d.setColor(new Color(30, 30, 30));
+        g2d.fillRect(0, 0, TILE_SIZE * COLUMNS, 50);
 
-        String scoreText = "$" + player.getScore();
-        String highText = "Best: $" + highScore;
-        String timeText = formatTime(remainingTime);
+        g2d.setColor(Color.WHITE);
+        g2d.setFont(new Font("Lato", Font.BOLD, 20));
 
+        String scoreText = "Score: $" + player.getScore();
+        String highText = "High: $" + highScore;
+        String timeText = "Time: " + formatTime(remainingTime);
 
-        g2d.drawString(scoreText, 20, TILE_SIZE * ROWS - 40);
-        g2d.drawString(highText, 20, TILE_SIZE * ROWS - 15);
-        g2d.drawString(timeText, TILE_SIZE * COLUMNS - 100, TILE_SIZE * ROWS - 15);
+        g2d.drawString(scoreText, 20, 30);
+        g2d.drawString(highText, TILE_SIZE * COLUMNS / 2 - 60, 30);
+        g2d.drawString(timeText, TILE_SIZE * COLUMNS - 120, 30);
     }
+
 
 
 
@@ -166,13 +201,17 @@ public class Board extends JPanel implements ActionListener, KeyListener {
         Random rand = new Random();
 
         for (int i = 0; i < NUM_COINS; i++) {
-            int coinX = rand.nextInt(COLUMNS);
-            int coinY = rand.nextInt(ROWS);
-            coinList.add(new Coin(coinX, coinY));
+            Point p;
+            do {
+                p = new Point(rand.nextInt(COLUMNS), rand.nextInt(ROWS));
+            } while (positionIsOccupied(p));
+
+            coinList.add(new Coin(p.x, p.y));
         }
 
         return coinList;
     }
+
 
     private void collectCoins() {
         ArrayList<Coin> collectedCoins = new ArrayList<>();
@@ -180,8 +219,9 @@ public class Board extends JPanel implements ActionListener, KeyListener {
         for (Coin coin : coins) {
             if (player.getPos().equals(coin.getPos())) {
                 player.addScore(coin.getValue());
+                SoundPlayer.playSound("/sounds/coin.wav");
                 collectedCoins.add(coin);
-                remainingTime += 0.25;
+                remainingTime += 0.5;
                 coinsToAdd.add(generateRandomCoin());
             }
         }
@@ -217,7 +257,7 @@ public class Board extends JPanel implements ActionListener, KeyListener {
                     point = new Point(rand.nextInt(COLUMNS), rand.nextInt(ROWS));
                 } while (positionIsOccupied(point));
 
-                if (rand.nextDouble() < 0.2) {
+                if (rand.nextDouble() < 0.5) {
                     coins.add(new SpecialCoin(point.x, point.y));
                 } else {
                     coins.add(new Coin(point.x, point.y));
@@ -228,26 +268,37 @@ public class Board extends JPanel implements ActionListener, KeyListener {
 
 
     private boolean positionIsOccupied(Point p) {
-        if (player.getPos().equals(p)) {
-            return true;
+        if (player.getPos().equals(p)) return true;
+
+        for (Coin c : coins) {
+            if (c.getPos().equals(p)) return true;
         }
-        for (Coin coin : coins) {
-            if (coin.getPos().equals(p)) {
-                return true;
-            }
+
+        for (Obstacle o : obstacles) {
+            if (o.getPos().equals(p)) return true;
         }
+
+        for (Trap t : traps) {
+            if (t.getPos().equals(p)) return true;
+        }
+
         return false;
     }
 
 
+
     private void restartGame() {
-        player = new Player();
+        player = new Player(this);
+        enemy = new Enemy(COLUMNS / 2, ROWS / 2);
         coins = populateCoins();
+        obstacles = populateObstacles();
+        traps = populateTraps();
         gameOver = false;
         gameTicks = 0;
         remainingTime = 30.0;
         timer.start();
     }
+
 
 
     private String formatTime(double seconds) {
@@ -291,9 +342,108 @@ public class Board extends JPanel implements ActionListener, KeyListener {
         }
     }
 
+    private ArrayList<Obstacle> populateObstacles() {
+        ArrayList<Obstacle> obstacleList = new ArrayList<>();
+        Random rand = new Random();
+
+        while (obstacleList.size() < NUM_OBSTACLES) {
+            int x = rand.nextInt(COLUMNS);
+            int y = rand.nextInt(ROWS);
+            Point p = new Point(x, y);
+
+            if (player.getPos().equals(p) || positionOccupiedByCoin(p) || positionOccupiedByObstacle(obstacleList, p) || positionOccupiedByTrap(p)) {
+                continue;
+            }
+
+            obstacleList.add(new Obstacle(x, y));
+        }
+
+        return obstacleList;
+    }
+
+    private boolean positionOccupiedByCoin(Point p) {
+        for (Coin c : coins) {
+            if (c.getPos().equals(p)) return true;
+        }
+        return false;
+    }
+
+    private boolean positionOccupiedByObstacle(ArrayList<Obstacle> list, Point p) {
+        for (Obstacle o : list) {
+            if (o.getPos().equals(p)) return true;
+        }
+        return false;
+    }
+
+    public boolean isObstacleAt(Point p) {
+        for (Obstacle o : obstacles) {
+            if (o.getPos().equals(p)) return true;
+        }
+        return false;
+    }
+
+    private ArrayList<Trap> populateTraps() {
+        ArrayList<Trap> trapList = new ArrayList<>();
+        Random rand = new Random();
+
+        while (trapList.size() < NUM_TRAPS) {
+            Point p = new Point(rand.nextInt(COLUMNS), rand.nextInt(ROWS));
+
+            if (!positionIsOccupied(p) && !isObstacleAt(p)) {
+                trapList.add(new Trap(p.x, p.y));
+            }
+        }
+
+        return trapList;
+    }
 
 
+    private void checkTraps() {
+        ArrayList<Trap> triggered = new ArrayList<>();
 
+        for (Trap trap : traps) {
+            if (player.getPos().equals(trap.getPos())) {
+                player.addScore(-trap.getDamage());
+                SoundPlayer.playSound("/sounds/trap.wav");
+                triggered.add(trap);
+            }
+        }
+
+        traps.removeAll(triggered);
+    }
+
+    private boolean positionOccupiedByTrap(Point p) {
+        for (Trap t : traps) {
+            if (t.getPos().equals(p)) return true;
+        }
+        return false;
+    }
+
+    private void maybeSpawnRandomTrap() {
+        Random rand = new Random();
+
+        if (traps.size() < 7 && rand.nextDouble() < 0.02) {
+            Point point;
+            do {
+                point = new Point(rand.nextInt(COLUMNS), rand.nextInt(ROWS));
+            } while (positionIsOccupied(point));
+
+            traps.add(new Trap(point.x, point.y));
+        }
+    }
+
+    private void removeExpiredTraps() {
+        traps.removeIf(Trap::isExpired);
+    }
+
+    private void checkEnemyCollision() {
+        if (player.getPos().equals(enemy.getPos())) {
+            SoundPlayer.playSound("/sounds/enemy.wav");
+            gameOver = true;
+            timer.stop();
+            repaint();
+        }
+    }
 
 
 

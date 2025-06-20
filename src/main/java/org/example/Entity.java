@@ -27,7 +27,7 @@ public abstract class Entity {
         g.drawImage(
                 image,
                 pos.x * Board.TILE_SIZE,
-                pos.y * Board.TILE_SIZE,
+                pos.y * Board.TILE_SIZE + Board.HUD_HEIGHT,
                 observer
         );
     }

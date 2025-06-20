@@ -1,7 +1,7 @@
 package org.example;
 import javax.swing.*;
 
-class App {
+public class Main {
 
     private static void initWindow() {
         JFrame window = new JFrame("2D Game");

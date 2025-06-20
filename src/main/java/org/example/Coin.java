@@ -1,42 +1,40 @@
 package org.example;
-import java.awt.Graphics;
-import java.awt.image.BufferedImage;
-import java.awt.image.ImageObserver;
-import java.awt.Point;
-import java.io.File;
-import java.io.IOException;
+
 import javax.imageio.ImageIO;
+import java.io.IOException;
 
-public class Coin {
+public class Coin extends Entity {
+    private int lifeTicks;
+    private static final int MAX_LIFE_TICKS = 300;
 
-    private BufferedImage image;
-    private Point pos;
+    protected int value = Board.POINTS_PER_COIN;
 
     public Coin(int x, int y) {
-        loadImage();
-
-        pos = new Point(x, y);
+        super("/images/coin.png", x, y);
+        lifeTicks = MAX_LIFE_TICKS;
     }
 
-    private void loadImage() {
+    public void tick() {
+        lifeTicks--;
+    }
+
+    public boolean isExpired() {
+        return lifeTicks <= 0;
+    }
+
+    public int getValue() {
+        return value;
+    }
+
+    protected void setValue(int value) {
+        this.value = value;
+    }
+
+    protected void setImage(String path) {
         try {
-            image = ImageIO.read(getClass().getResource("/images/coin.png"));
+            image = ImageIO.read(getClass().getResource(path));
         } catch (IOException | IllegalArgumentException e) {
-            System.out.println("Error loading player image: " + e.getMessage());
+            System.out.println("Error loading coin image: " + e.getMessage());
         }
     }
-
-    public void draw(Graphics g, ImageObserver observer) {
-        g.drawImage(
-                image,
-                pos.x * Board.TILE_SIZE,
-                pos.y * Board.TILE_SIZE,
-                observer
-        );
-    }
-
-    public Point getPos() {
-        return pos;
-    }
-
 }
